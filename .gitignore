@@ -55,3 +55,14 @@ next-env.d.ts
 
 # Supabase CLI temp files
 supabase/.temp/
+
+# Expo / React Native
+mobile/.expo/
+mobile/node_modules/
+mobile/.vscode/
+
+# Emulator debug screenshots
+emulator_screen*.png
+
+# Design briefs / local docs
+stitch-design-brief.md
