@@ -56,10 +56,9 @@ next-env.d.ts
 # Supabase CLI temp files
 supabase/.temp/
 
-# Expo / React Native
-mobile/.expo/
-mobile/node_modules/
-mobile/.vscode/
+# Expo / React Native — entire mobile dir is on its own feature branch,
+# ignore on master to avoid noise. Remove this line when merging the app.
+mobile/
 
 # Emulator debug screenshots
 emulator_screen*.png
