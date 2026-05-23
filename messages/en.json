@@ -693,7 +693,8 @@
         "total": "Total",
         "find_courts": "Find more courts",
         "my_bookings": "My bookings",
-        "series_position": "Week {index} of {total} in your weekly series"
+        "series_position": "Week {index} of {total} in your weekly series",
+        "download_invoice": "Download invoice"
     },
     "reliability": {
         "tooltip": "{pct}% reliable — {noShows} no-shows in {total} bookings."
@@ -876,7 +877,8 @@
         "has_prayer_room": "Has a prayer room",
         "has_wudu_area": "Has a wudu (ablution) area",
         "prayer_friendly_label": "Prayer-friendly (has a prayer room and/or wudu area)",
-        "prayer_friendly_badge": "🕌 Prayer-friendly"
+        "prayer_friendly_badge": "🕌 Prayer-friendly",
+        "fix_fields_error": "Please fix the highlighted fields above before saving"
     },
     "hours_form": {
         "heading": "Opening Hours",

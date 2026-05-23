@@ -205,7 +205,7 @@ export default async function BookingPage({
                         rel="noopener noreferrer"
                         className="block w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 text-center hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                     >
-                        Download invoice
+                        {t("download_invoice")}
                     </Link>
                 )}
 

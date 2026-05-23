@@ -342,8 +342,7 @@ export function FacilityEditForm({
                         invalid value above the fold. */}
                     {Object.keys(errors).length > 0 && !serverError && (
                         <p className="text-sm text-red-500" role="alert">
-                            Please fix the highlighted fields above before saving
-                            ({Object.keys(errors).join(", ")}).
+                            {t("fix_fields_error")} ({Object.keys(errors).join(", ")}).
                         </p>
                     )}
                     {saved && !serverError && Object.keys(errors).length === 0 && !softWarning && (

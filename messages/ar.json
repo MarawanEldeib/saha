@@ -693,7 +693,8 @@
         "total": "المجموع",
         "find_courts": "ابحث عن ملاعب أخرى",
         "my_bookings": "حجوزاتي",
-        "series_position": "الأسبوع {index} من {total} في سلسلتك الأسبوعية"
+        "series_position": "الأسبوع {index} من {total} في سلسلتك الأسبوعية",
+        "download_invoice": "تحميل الفاتورة"
     },
     "reliability": {
         "tooltip": "{pct}% موثوقية — {noShows} عدم حضور من أصل {total} حجوزات."
@@ -876,7 +877,8 @@
         "has_prayer_room": "تتوفر مصلى",
         "has_wudu_area": "تتوفر منطقة وضوء",
         "prayer_friendly_label": "مناسب لأوقات الصلاة (مصلى و/أو منطقة وضوء متاحة)",
-        "prayer_friendly_badge": "🕌 صديقة للمصلين"
+        "prayer_friendly_badge": "🕌 صديقة للمصلين",
+        "fix_fields_error": "يرجى تصحيح الحقول المميزة أعلاه قبل الحفظ"
     },
     "hours_form": {
         "heading": "ساعات العمل",
