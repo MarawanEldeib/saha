@@ -112,6 +112,8 @@ src/
 - [docs/MCP.md](docs/MCP.md) — hosted MCP server for Claude Desktop / Cursor / Cline
 - [docs/RUNBOOK_ADMIN.md](docs/RUNBOOK_ADMIN.md) — admin SQL playbooks
 - [docs/RUNBOOK_STRIPE.md](docs/RUNBOOK_STRIPE.md) — Stripe ops playbooks
+- [docs/RUNBOOK_SECURITY.md](docs/RUNBOOK_SECURITY.md) — RLS auth-hardening: fix, migration steps, verification
+- [SECURITY.md](SECURITY.md) — authorization model + self-audit findings
 - [OPS.md](OPS.md) — manual platform-config steps (Mapbox, Sentry, Twilio, Upstash, Stripe webhook, Google OAuth)
 - [docs/GPT_ACTION.md](docs/GPT_ACTION.md) — how to publish the Custom GPT against this API
 - [PROJECT_REPORT.md](PROJECT_REPORT.md) — long-form project overview (point-in-time)
