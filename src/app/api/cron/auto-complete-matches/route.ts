@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireCronAuth } from "@/lib/cron-auth";
 import { captureRouteError } from "@/lib/sentry-helpers";
 
 const ROUTE = "cron/auto-complete-matches";
@@ -15,10 +16,8 @@ const ROUTE = "cron/auto-complete-matches";
  * 'completed' or 'cancelled'.
  */
 export async function GET(req: NextRequest) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const unauthorized = requireCronAuth(req);
+    if (unauthorized) return unauthorized;
 
     const supabase = createAdminClient();
 

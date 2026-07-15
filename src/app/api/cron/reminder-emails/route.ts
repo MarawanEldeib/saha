@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FROM_ADDRESS } from "@/lib/email-config";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireCronAuth } from "@/lib/cron-auth";
 import { sendWhatsApp } from "@/lib/twilio";
 import { Resend } from "resend";
 import { format } from "date-fns";
@@ -9,11 +10,10 @@ import { captureRouteError } from "@/lib/sentry-helpers";
 const ROUTE = "cron/reminder-emails";
 
 export async function GET(req: NextRequest) {
+    const unauthorized = requireCronAuth(req);
+    if (unauthorized) return unauthorized;
+
     const resend = new Resend(process.env.RESEND_API_KEY);
-    const authHeader = req.headers.get("authorization");
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
     // Use the admin (service-role) client. The cron runs without a session
     // cookie, so the regular cookie-bound server client would have no auth

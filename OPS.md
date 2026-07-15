@@ -27,20 +27,24 @@ a CodeSandbox embedding the map) and confirm Mapbox returns 401.
 
 ---
 
-## SAH-78: Enable Vercel BotID
+## SAH-78: Vercel BotID — NOT currently implemented
 
-Code is wired (`src/lib/botid.ts`) on `loginAction`, `registerAction`,
-`forgotPasswordAction`. It gracefully no-ops when the platform feature
-isn't on. To turn it on:
+**Status: not wired in code.** An earlier branch added `src/lib/botid.ts` but
+it was reverted; there is no `botid` dependency and no call site (verified in
+the 2026-07-15 self-audit). This section previously claimed BotID was wired —
+that claim was false and has been corrected. Do not document controls that
+aren't in the code.
 
-1. Vercel Dashboard → saha → Settings → Bot Protection (or
-   "BotID" depending on the dashboard generation).
-2. Toggle Bot Protection to **Enabled**.
-3. Default mode is fine — there's no per-route configuration required.
+Automated-abuse protection today is the Upstash sliding-window rate limiter
+(`src/lib/rate-limit.ts`), which **fails closed** on the auth and
+password-reset paths (see `SECURITY.md`).
 
-**Verification:** From a residential IP, hit `/login` and confirm normal
-behaviour. From a known scraper user-agent (e.g. `curl -H 'User-Agent:
-Googlebot/...'`) confirm a generic error is returned.
+To actually add BotID later:
+
+1. `npm install botid`, then wrap `loginAction`, `registerAction`,
+   `forgotPasswordAction` with the server-side `checkBotId()` call.
+2. Vercel Dashboard → saha → Settings → Bot Protection → **Enabled**.
+3. Update this section **and** `README.md` to reflect that it is now live.
 
 ---
 

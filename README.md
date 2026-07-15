@@ -19,7 +19,7 @@ UAE-first booking platform for racket sports — Padel, Pickleball, Tennis, Squa
 | Messaging | Twilio (WhatsApp confirmations + reminders + Verify OTP) |
 | i18n | next-intl — English + Arabic (RTL) |
 | Observability | Sentry (Next.js SDK) + Vercel Analytics |
-| Auth abuse | Vercel BotID + Upstash rate-limit |
+| Auth abuse | Upstash rate-limit (sliding window, fails closed on auth paths) |
 | Hosting | Vercel (Fluid Compute) |
 
 ## Local Development

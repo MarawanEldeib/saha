@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { safeNextPath } from "@/lib/safe-redirect";
 
 /**
  * SAH-115: OAuth callback for Google (and future providers).
@@ -14,7 +15,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ locale: str
     const { locale } = await ctx.params;
     const url = new URL(req.url);
     const code = url.searchParams.get("code");
-    const next = url.searchParams.get("next") ?? `/${locale}`;
+    // SECURITY: sanitise the client-supplied `next` to a same-origin path so the
+    // OAuth callback can't be turned into an open redirect. See safe-redirect.
+    const next = safeNextPath(url.searchParams.get("next"), `/${locale}`);
     const errorDescription = url.searchParams.get("error_description");
 
     if (errorDescription) {

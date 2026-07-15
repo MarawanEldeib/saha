@@ -94,11 +94,58 @@ function reportBackendError(policy: RatePolicy, err: unknown) {
     });
 }
 
-export async function rateLimit(policy: RatePolicy, suffix?: string): Promise<RateLimitResult> {
+/**
+ * Options controlling behaviour when the limiter cannot be consulted.
+ */
+export interface RateLimitOptions {
+    /**
+     * When true, DENY the request if the rate-limit backend is unavailable
+     * (missing Upstash env in production, or a backend error) instead of
+     * allowing it. Use on auth / password-reset / OTP paths, where serving an
+     * unthrottled request is worse than a brief, loud failure. Defaults to
+     * false so non-security endpoints stay available.
+     */
+    failClosed?: boolean;
+}
+
+// Cool-off (seconds) suggested to the caller when we fail closed.
+const FAIL_CLOSED_RETRY_SECONDS = 30;
+
+/**
+ * True only in REAL production. On Vercel, NODE_ENV is "production" for both
+ * preview AND production builds, so we gate on VERCEL_ENV to avoid failing
+ * closed on preview deploys (which frequently don't have Upstash scoped to
+ * them). Falls back to NODE_ENV for non-Vercel production hosts.
+ */
+function isProductionRuntime(): boolean {
+    const vercelEnv = process.env.VERCEL_ENV;
+    if (vercelEnv) return vercelEnv === "production";
+    return process.env.NODE_ENV === "production";
+}
+
+/**
+ * Result to return when no limiter backend is configured. A fail-closed policy
+ * DENIES in production — an auth endpoint with no rate-limit backend is a
+ * misconfiguration, not a reason to serve unlimited attempts — and pages ops.
+ * In dev/preview (where Upstash is often intentionally absent) it still allows
+ * so local sign-in and preview testing keep working.
+ */
+function unavailableResult(policy: RatePolicy, opts?: RateLimitOptions): RateLimitResult {
+    if (opts?.failClosed && isProductionRuntime()) {
+        Sentry.captureMessage(`rate-limit backend unavailable — failing closed: ${policy}`, {
+            level: "error",
+            tags: { policy, kind: "rate_limit_unavailable_fail_closed" },
+        });
+        return { success: false, retryAfter: FAIL_CLOSED_RETRY_SECONDS };
+    }
+    return { success: true, retryAfter: 0 };
+}
+
+export async function rateLimit(policy: RatePolicy, suffix?: string, opts?: RateLimitOptions): Promise<RateLimitResult> {
     const cfg = POLICIES[policy];
     const limiter = getLimiter(policy, cfg.points, cfg.windowSec);
     if (!limiter) {
-        return { success: true, retryAfter: 0 };
+        return unavailableResult(policy, opts);
     }
     const key = await callerKey(policy, suffix);
     try {
@@ -107,9 +154,12 @@ export async function rateLimit(policy: RatePolicy, suffix?: string): Promise<Ra
         if (!success) reportBlocked(policy, retryAfter, "ip");
         return { success, retryAfter };
     } catch (err) {
-        // Don't fail-closed on Upstash errors — better to serve the request
-        // than to lock out real users when the rate-limit backend hiccups.
         reportBackendError(policy, err);
+        // Security-sensitive policies (auth, password reset, OTP) fail CLOSED so
+        // an Upstash outage — or an attacker deliberately erroring it — cannot
+        // silently disable throttling. Everything else fails OPEN for
+        // availability (a court search shouldn't 500 because Redis blipped).
+        if (opts?.failClosed) return { success: false, retryAfter: FAIL_CLOSED_RETRY_SECONDS };
         return { success: true, retryAfter: 0 };
     }
 }
@@ -117,11 +167,11 @@ export async function rateLimit(policy: RatePolicy, suffix?: string): Promise<Ra
 // SAH-79: per-phone and per-user OTP throttles need a key that ISN'T tied
 // to the caller's IP — same phone from different IPs still consumes the
 // same budget. This variant uses the supplied ownerKey directly.
-export async function rateLimitByOwnerKey(policy: RatePolicy, ownerKey: string): Promise<RateLimitResult> {
+export async function rateLimitByOwnerKey(policy: RatePolicy, ownerKey: string, opts?: RateLimitOptions): Promise<RateLimitResult> {
     const cfg = POLICIES[policy];
     const limiter = getLimiter(policy, cfg.points, cfg.windowSec);
     if (!limiter) {
-        return { success: true, retryAfter: 0 };
+        return unavailableResult(policy, opts);
     }
     try {
         const { success, reset } = await limiter.limit(`${policy}:owner:${ownerKey}`);
@@ -130,6 +180,7 @@ export async function rateLimitByOwnerKey(policy: RatePolicy, ownerKey: string):
         return { success, retryAfter };
     } catch (err) {
         reportBackendError(policy, err);
+        if (opts?.failClosed) return { success: false, retryAfter: FAIL_CLOSED_RETRY_SECONDS };
         return { success: true, retryAfter: 0 };
     }
 }

@@ -1234,11 +1234,13 @@ export async function startPhoneVerificationAction(phone: string) {
     }
 
     const { rateLimitByOwnerKey } = await import("@/lib/rate-limit");
-    const phoneRl = await rateLimitByOwnerKey("phone_otp_per_phone", normalized);
+    // SECURITY: OTP is an SMS-cost + brute-force surface — fail closed if the
+    // rate-limit backend is unavailable rather than sending unthrottled codes.
+    const phoneRl = await rateLimitByOwnerKey("phone_otp_per_phone", normalized, { failClosed: true });
     if (!phoneRl.success) {
         return { error: await tr("profile.otp_rate_phone", { minutes: Math.ceil(phoneRl.retryAfter / 60) }), retryAfter: phoneRl.retryAfter };
     }
-    const userRl = await rateLimitByOwnerKey("phone_otp_per_user", user.id);
+    const userRl = await rateLimitByOwnerKey("phone_otp_per_user", user.id, { failClosed: true });
     if (!userRl.success) {
         return { error: await tr("profile.otp_rate_user", { hours: Math.ceil(userRl.retryAfter / 3600) }), retryAfter: userRl.retryAfter };
     }
@@ -1482,13 +1484,25 @@ export async function cancelBookingAction(bookingId: string) {
         .eq("booking_id", bookingId)
         .single();
 
-    // Issue Stripe refund if payment succeeded and within window
+    // Issue Stripe refund if payment succeeded and within window.
+    // `refunded` is true ONLY when refunds.create actually ran (self-audit
+    // 2026-07-15). Previously we reported refunded:true whenever the payment
+    // had succeeded within the window — but the refund itself was gated on
+    // stripe_payment_intent_id, which was never persisted, so the refund was
+    // silently skipped while the UI was told the money came back.
+    let refunded = false;
     if (withinWindow && payment?.stripe_payment_intent_id && payment.status === "succeeded") {
         try {
             await getStripe().refunds.create({ payment_intent: payment.stripe_payment_intent_id });
             await supabase.from("payments").update({ status: "refunded" } as never).eq("booking_id", bookingId);
-        } catch {
-            // refund failed — still cancel the booking
+            refunded = true;
+        } catch (err) {
+            captureRouteError(err, {
+                route: "actions:cancelBooking",
+                level: "error",
+                extra: { booking_id: bookingId, payment_intent_id: payment.stripe_payment_intent_id },
+            });
+            // Refund failed — still cancel the booking; `refunded` stays false.
         }
     }
 
@@ -1499,8 +1513,6 @@ export async function cancelBookingAction(bookingId: string) {
     // SAH-93 follow-up: if this booking spent wallet credit, refund it back
     // to the player's wallet so they're whole on cancellation.
     const walletRefunded = await refundWalletCreditForBooking(user.id, bookingId);
-
-    const refunded = withinWindow && payment?.status === "succeeded";
     await logAuditEvent({
         actorId: user.id,
         actorRole: "user",

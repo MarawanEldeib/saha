@@ -135,9 +135,25 @@ export async function POST(req: NextRequest) {
                     .eq("id", availabilityId);
             }
 
+            // Refund fix (self-audit 2026-07-15): persist the payment intent id
+            // so cancel/refund and the charge.refunded / dispute.created webhook
+            // sync can locate the charge. Previously only the session id was
+            // stored, so payments.stripe_payment_intent_id stayed null and
+            // app-initiated refunds silently no-op'd. (Single-booking path only:
+            // a recurring series shares one intent across N payment rows and the
+            // column is UNIQUE, so the series-cancel path resolves the intent
+            // from the checkout session instead.)
+            const paymentIntentId = typeof session.payment_intent === "string"
+                ? session.payment_intent
+                : session.payment_intent?.id ?? null;
+
             await supabase
                 .from("payments")
-                .update({ status: "succeeded", stripe_checkout_session_id: session.id } as never)
+                .update({
+                    status: "succeeded",
+                    stripe_checkout_session_id: session.id,
+                    stripe_payment_intent_id: paymentIntentId,
+                } as never)
                 .eq("booking_id", bookingId);
         }
 

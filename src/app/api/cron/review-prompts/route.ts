@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FROM_ADDRESS } from "@/lib/email-config";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireCronAuth } from "@/lib/cron-auth";
 import { sendWhatsApp } from "@/lib/twilio";
 import { Resend } from "resend";
 import { format } from "date-fns";
@@ -17,10 +18,8 @@ const ROUTE = "cron/review-prompts";
  * Schedule via vercel.json — runs hourly.
  */
 export async function GET(req: NextRequest) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const unauthorized = requireCronAuth(req);
+    if (unauthorized) return unauthorized;
 
     const resend = new Resend(process.env.RESEND_API_KEY);
     const supabase = createAdminClient();

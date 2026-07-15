@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireCronAuth } from "@/lib/cron-auth";
 import { logAuditEvent } from "@/lib/audit";
 import { captureRouteError } from "@/lib/sentry-helpers";
 import { GET as runReviewPrompts } from "../review-prompts/route";
@@ -18,10 +19,8 @@ const ROUTE = "cron/mark-no-shows";
  * Schedule via vercel.json — runs daily at 23:00 UTC (03:00 GST).
  */
 export async function GET(req: NextRequest) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const unauthorized = requireCronAuth(req);
+    if (unauthorized) return unauthorized;
 
     const supabase = createAdminClient();
 

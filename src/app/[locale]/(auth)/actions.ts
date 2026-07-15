@@ -14,6 +14,7 @@ import {
 import { rateLimit } from "@/lib/rate-limit";
 import { sendPasswordResetEmail } from "@/lib/emails/password-reset-email";
 import { tr } from "@/lib/i18n-errors";
+import { safeNextPath } from "@/lib/safe-redirect";
 
 // ---------------------------------------------------------------------------
 // Login
@@ -21,7 +22,7 @@ import { tr } from "@/lib/i18n-errors";
 export async function loginAction(formData: FormData) {
     // SAH-76: 5 attempts / 15 min / IP. Combined IP+email key so one IP
     // can't lock the same email out everywhere by hammering it.
-    const rl = await rateLimit("auth_login", (formData.get("email") as string) ?? "");
+    const rl = await rateLimit("auth_login", (formData.get("email") as string) ?? "", { failClosed: true });
     if (!rl.success) {
         return { error: `Too many attempts. Try again in ${rl.retryAfter}s.` };
     }
@@ -46,14 +47,16 @@ export async function loginAction(formData: FormData) {
     const locale = formData.get("locale") as string ?? "en";
     const next = formData.get("next") as string | null;
     revalidatePath("/", "layout");
-    redirect(next || `/${locale}`);
+    // SECURITY: only redirect to a same-origin path — never an attacker-supplied
+    // absolute/protocol-relative URL (open-redirect phishing). See safe-redirect.
+    redirect(safeNextPath(next, `/${locale}`));
 }
 
 // ---------------------------------------------------------------------------
 // Register
 // ---------------------------------------------------------------------------
 export async function registerAction(formData: FormData) {
-    const rl = await rateLimit("auth_signup");
+    const rl = await rateLimit("auth_signup", undefined, { failClosed: true });
     if (!rl.success) {
         return { error: `Too many sign-ups from this IP. Try again in ${rl.retryAfter}s.` };
     }
@@ -121,7 +124,7 @@ export type ForgotPasswordResult =
     | { ok: false; code: "error"; message: string };
 
 export async function forgotPasswordAction(formData: FormData): Promise<ForgotPasswordResult> {
-    const rl = await rateLimit("auth_forgot", (formData.get("email") as string) ?? "");
+    const rl = await rateLimit("auth_forgot", (formData.get("email") as string) ?? "", { failClosed: true });
     if (!rl.success) {
         return { ok: false, code: "rate_limited", retryAfter: rl.retryAfter };
     }
