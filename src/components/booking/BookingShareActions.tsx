@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Check, Users, Calendar, ExternalLink } from "lucide-react";
+import { Copy, Check, Users, Calendar, ExternalLink, UsersRound } from "lucide-react";
 import { format } from "date-fns";
 import { useTranslations } from "next-intl";
+import { SplitBookingModal } from "./SplitBookingModal";
 
 interface Props {
     courtName: string;
@@ -16,6 +17,10 @@ interface Props {
     currency: string;
     numPlayers: number;
     shareUrl: string;
+    /** SAH-92: enables the "Split with friends" modal when present. Booker only. */
+    bookingId?: string;
+    /** SAH-92: hide the split button when a split is already in flight. */
+    splitInProgress?: boolean;
 }
 
 function buildGCalUrl(props: Props) {
@@ -50,9 +55,10 @@ function buildIcsContent(props: Props) {
 
 export function BookingShareActions(props: Props) {
     const t = useTranslations("booking_share");
-    const { totalPrice, currency, numPlayers, shareUrl, courtName, facilityName, date, startTime } = props;
+    const { totalPrice, currency, numPlayers, shareUrl, courtName, facilityName, date, startTime, bookingId, splitInProgress } = props;
     const [copied, setCopied] = useState(false);
     const [showSplit, setShowSplit] = useState(false);
+    const [splitModalOpen, setSplitModalOpen] = useState(false);
 
     const readableDate = format(new Date(date), "EEEE, MMMM d");
     const waText = `Hey! I booked ${courtName} at ${facilityName} on ${readableDate} at ${startTime.slice(0, 5)}. Join me: ${shareUrl}`;
@@ -135,12 +141,42 @@ export function BookingShareActions(props: Props) {
                         <span className="text-xs text-gray-400">{showSplit ? t("hide") : t("show")}</span>
                     </button>
                     {showSplit && (
-                        <div className="px-4 pb-3 text-sm text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
-                            {currency} {totalPrice} ÷ {numPlayers} players ={" "}
-                            <span className="font-semibold text-gray-900 dark:text-white">{currency} {perPlayer} each</span>
+                        <div className="px-4 pb-3 border-t border-gray-200 dark:border-gray-700 pt-3 space-y-3">
+                            <div className="text-sm text-gray-600 dark:text-gray-400">
+                                {currency} {totalPrice} ÷ {numPlayers} players ={" "}
+                                <span className="font-semibold text-gray-900 dark:text-white">{currency} {perPlayer} each</span>
+                            </div>
+                            {/* SAH-92: collect names + WhatsApp numbers, then create
+                                a Stripe Payment Link per guest and notify each. */}
+                            {bookingId && !splitInProgress && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSplitModalOpen(true)}
+                                    className="flex items-center justify-center gap-2 w-full px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700"
+                                >
+                                    <UsersRound className="h-4 w-4" />
+                                    {t("split_with_friends")}
+                                </button>
+                            )}
+                            {splitInProgress && (
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {t("split_already_running")}
+                                </p>
+                            )}
                         </div>
                     )}
                 </div>
+            )}
+
+            {bookingId && (
+                <SplitBookingModal
+                    bookingId={bookingId}
+                    totalPrice={totalPrice}
+                    currency={currency}
+                    numPlayers={numPlayers}
+                    open={splitModalOpen}
+                    onClose={() => setSplitModalOpen(false)}
+                />
             )}
         </div>
     );

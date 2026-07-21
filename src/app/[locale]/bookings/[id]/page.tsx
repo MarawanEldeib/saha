@@ -10,6 +10,7 @@ import { BookingShareActions } from "@/components/booking/BookingShareActions";
 import { BookingStatusWatcher } from "@/components/booking/BookingStatusWatcher";
 import { CompletePaymentButton } from "@/components/booking/CompletePaymentButton";
 import { MoveBookingPanel } from "@/components/booking/MoveBookingPanel";
+import { SplitStatusPanel } from "@/components/booking/SplitStatusPanel";
 import { CancelButton } from "../CancelButton";
 import { CancelSeriesButton } from "../CancelSeriesButton";
 
@@ -92,6 +93,16 @@ export default async function BookingPage({
     const host = headersList.get("host") ?? "localhost:3000";
     const appUrl = host.startsWith("localhost") ? `http://${host}` : `https://${host}`;
     const shareUrl = `${appUrl}/${locale}/booking/${booking.qr_code_token}`;
+
+    // SAH-92: pull existing booking_guests so the booker can see who has
+    // paid and copy any payment link that didn't deliver automatically.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: splitGuests } = await (supabase as any)
+        .from("booking_guests")
+        .select("id, name, whatsapp_phone, email, share_amount, currency, payment_status, stripe_payment_link_url, paid_at, notified_at")
+        .eq("booking_id", booking.id)
+        .order("invited_at", { ascending: true });
+    const splitInProgress = Array.isArray(splitGuests) && splitGuests.length > 0;
 
     return (
         <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-12">
@@ -185,7 +196,14 @@ export default async function BookingPage({
                         currency={booking.currency}
                         numPlayers={booking.num_players}
                         shareUrl={shareUrl}
+                        bookingId={booking.id}
+                        splitInProgress={splitInProgress}
                     />
+                )}
+
+                {/* SAH-92: per-guest paid/pending status with copy-link buttons. */}
+                {isConfirmed && !isCancelled && splitInProgress && (
+                    <SplitStatusPanel guests={splitGuests ?? []} />
                 )}
 
                 {canMove && (

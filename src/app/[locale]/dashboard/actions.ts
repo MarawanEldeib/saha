@@ -18,6 +18,7 @@ import { getPlatformFeePercent } from "@/lib/platform-settings";
 import { logAuditEvent } from "@/lib/audit";
 import { captureRouteError } from "@/lib/sentry-helpers";
 import { tr } from "@/lib/i18n-errors";
+import { sendWhatsApp } from "@/lib/twilio";
 import {
     FACILITY_COOKIE_NAME,
     FACILITY_COOKIE_MAX_AGE,
@@ -331,9 +332,10 @@ export async function deleteAvailabilitySlotAction(slotId: string) {
 // ---------------------------------------------------------------------------
 export async function splitBookingAction(
     bookingId: string,
-    guests: { name?: string; email?: string }[],
+    guests: { name?: string; email?: string; whatsapp_phone?: string }[],
 ) {
     const supabase = await createClient();
+    const locale = await getLocale();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { error: await tr("common.not_authenticated") };
 
@@ -343,7 +345,10 @@ export async function splitBookingAction(
 
     const { data: booking } = await supabase
         .from("bookings")
-        .select("id, status, total_price, currency, player_id")
+        .select(`
+            id, status, total_price, currency, player_id, date, start_time, end_time,
+            courts(name, facilities(name))
+        `)
         .eq("id", bookingId)
         .eq("player_id", user.id)
         .single();
@@ -369,7 +374,7 @@ export async function splitBookingAction(
     const headersList = await headers();
     const host = headersList.get("host") ?? "localhost:3000";
     const appUrl = host.startsWith("localhost") ? `http://${host}` : `https://${host}`;
-    const successUrl = `${appUrl}/en/bookings/${bookingId}?split_paid=1`;
+    const successUrl = `${appUrl}/${locale}/bookings/${bookingId}?split_paid=1`;
 
     const admin = createAdminClient();
 
@@ -381,23 +386,42 @@ export async function splitBookingAction(
                 booking_id: bookingId,
                 name: g.name?.trim() || null,
                 email: g.email?.trim() || null,
+                whatsapp_phone: g.whatsapp_phone?.trim() || null,
                 share_amount: sharePerPerson,
                 currency,
                 payment_status: "pending" as const,
             })),
         )
-        .select("id, name, email, share_amount");
+        .select("id, name, email, whatsapp_phone, share_amount");
     if (insertError || !insertedGuests) {
         return { error: await tr("split_payment.could_not_create_guests") };
     }
+
+    // Mark the booking as split_post so the UI knows we're in a split flow.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin as any)
+        .from("bookings")
+        .update({ payment_split_mode: "split_post" } as never)
+        .eq("id", bookingId);
 
     // Create one Stripe Payment Link per guest. Each link is platform-only
     // (no Connect transfer) — the friend reimburses the booker via wallet
     // credit awarded in the webhook.
     const stripe = getStripe();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const court = (booking as any).courts;
+    const facility = court?.facilities;
+    const courtName = court?.name ?? "the court";
+    const facilityName = facility?.name ?? "the facility";
+    const readableDate = new Date(booking.date).toLocaleDateString("en-GB", {
+        weekday: "short", year: "numeric", month: "short", day: "numeric",
+    });
+    const startTime = (booking.start_time as string).slice(0, 5);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const enriched: any[] = [];
-    for (const guest of insertedGuests as { id: string; share_amount: number; name: string | null; email: string | null }[]) {
+    type GuestRow = { id: string; share_amount: number; name: string | null; email: string | null; whatsapp_phone: string | null };
+    for (const guest of insertedGuests as GuestRow[]) {
         try {
             const product = await stripe.products.create({
                 name: `Saha booking split — ${(guest.name ?? guest.email ?? "guest")}`,
@@ -424,12 +448,82 @@ export async function splitBookingAction(
                     stripe_payment_link_url: link.url,
                 } as never)
                 .eq("id", guest.id);
+
+            // Notify the guest — WhatsApp first (SAH-79: any phone we ask
+            // for here is the guest's contact, not a verified Saha user
+            // phone; we still allow sending because the *booker* gave us
+            // the number and the message body identifies them by name).
+            const greeting = guest.name ? `Hi ${guest.name}` : "Hi";
+            const inviterName = (await getDisplayName(admin, user.id)) ?? "Your friend";
+            const waBody =
+                `${greeting}! ${inviterName} booked ${courtName} at ${facilityName} on ${readableDate} at ${startTime} ` +
+                `and asked you to chip in.\n\n` +
+                `Your share: ${currency} ${guest.share_amount}\n` +
+                `Pay here (Stripe, secure): ${link.url}\n\n` +
+                `Once paid, ${inviterName} gets a Saha wallet credit equal to your share.`;
+            const notifiedVia: string[] = [];
+            if (guest.whatsapp_phone) {
+                try {
+                    await sendWhatsApp(guest.whatsapp_phone, waBody);
+                    notifiedVia.push("whatsapp");
+                } catch (err) {
+                    captureRouteError(err, {
+                        route: "actions:splitBooking",
+                        extra: { guest_id: guest.id, channel: "whatsapp" },
+                    });
+                }
+            }
+
+            // Email fallback if the booker provided one.
+            if (guest.email && process.env.RESEND_API_KEY) {
+                try {
+                    const { Resend } = await import("resend");
+                    const resend = new Resend(process.env.RESEND_API_KEY);
+                    const { FROM_ADDRESS } = await import("@/lib/email-config");
+                    await resend.emails.send({
+                        from: FROM_ADDRESS,
+                        to: guest.email,
+                        subject: `${inviterName} invited you to split a booking — ${courtName}`,
+                        html: `
+                            <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+                                <h2 style="font-size:20px;font-weight:700;margin-bottom:4px">You've been invited to split a court booking</h2>
+                                <p style="color:#6b7280;margin-bottom:24px">
+                                    ${inviterName} booked <strong>${courtName}</strong> at <strong>${facilityName}</strong> for <strong>${readableDate}</strong> at <strong>${startTime}</strong> and asked you to pay your share.
+                                </p>
+                                <div style="background:#f9fafb;border-radius:12px;padding:20px;margin-bottom:24px">
+                                    <p style="margin:0 0 8px"><strong>Your share:</strong> ${currency} ${guest.share_amount}</p>
+                                    <p style="margin:0;color:#6b7280;font-size:14px">Payment is processed by Stripe. Once paid, ${inviterName} receives a Saha wallet credit equal to your share.</p>
+                                </div>
+                                <a href="${link.url}" style="display:inline-block;background:#111827;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600">
+                                    Pay your share
+                                </a>
+                            </div>
+                        `,
+                    });
+                    notifiedVia.push("email");
+                } catch (err) {
+                    captureRouteError(err, {
+                        route: "actions:splitBooking",
+                        extra: { guest_id: guest.id, channel: "email" },
+                    });
+                }
+            }
+
+            if (notifiedVia.length > 0) {
+                await admin
+                    .from("booking_guests")
+                    .update({ notified_at: new Date().toISOString() } as never)
+                    .eq("id", guest.id);
+            }
+
             enriched.push({
                 id: guest.id,
                 name: guest.name,
                 email: guest.email,
+                whatsapp_phone: guest.whatsapp_phone,
                 share_amount: guest.share_amount,
                 url: link.url,
+                notified_via: notifiedVia,
             });
         } catch (err) {
             captureRouteError(err, {
@@ -445,11 +539,28 @@ export async function splitBookingAction(
                 id: guest.id,
                 name: guest.name,
                 email: guest.email,
+                whatsapp_phone: guest.whatsapp_phone,
                 share_amount: guest.share_amount,
                 url: null,
+                notified_via: [],
             });
         }
     }
+
+    await logAuditEvent({
+        actorId: user.id,
+        actorRole: "user",
+        action: "booking.split.created",
+        targetType: "booking",
+        targetId: bookingId,
+        metadata: {
+            guest_count: guests.length,
+            share_per_person: sharePerPerson,
+            currency,
+        },
+    });
+
+    revalidatePath(`/${locale}/bookings/${bookingId}`);
 
     return {
         success: true,
@@ -457,6 +568,14 @@ export async function splitBookingAction(
         currency,
         guests: enriched,
     };
+}
+
+// SAH-92 helper: pull the display name for the inviter via the admin
+// client so the guest's WhatsApp/email message names them.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getDisplayName(admin: any, userId: string): Promise<string | null> {
+    const { data } = await admin.from("profiles").select("display_name").eq("id", userId).single();
+    return data?.display_name ?? null;
 }
 
 // ---------------------------------------------------------------------------
