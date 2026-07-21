@@ -880,6 +880,18 @@
         "prayer_friendly_badge": "🕌 Prayer-friendly",
         "fix_fields_error": "Please fix the highlighted fields above before saving"
     },
+    "closed_dates": {
+        "heading": "Closed dates",
+        "hint": "Holidays, maintenance, Eid — mark a date closed and any confirmed bookings will be cancelled, refunded, and the players notified.",
+        "date_label": "Date",
+        "reason_label": "Reason (optional)",
+        "reason_placeholder": "e.g. Eid al-Fitr, Court resurfacing",
+        "add": "Add",
+        "empty": "No upcoming closed dates.",
+        "remove_aria": "Remove closed date",
+        "invalid_date": "Invalid date.",
+        "past_date": "Closed date must be today or later."
+    },
     "hours_form": {
         "heading": "Opening Hours",
         "subheading": "Set your facility's weekly schedule. Players will see these hours on your profile.",

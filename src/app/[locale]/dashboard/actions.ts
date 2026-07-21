@@ -1949,3 +1949,104 @@ export async function checkInByQrTokenAction(token: string) {
         },
     };
 }
+
+// ---------------------------------------------------------------------------
+// SAH-91: facility-declared closed dates (holidays, maintenance, Eid, etc.)
+//
+// Owner declares dates the facility is closed; a nightly cron sweeps any
+// confirmed bookings on those dates, cancels them, refunds the player and
+// fires a notification. These actions just manage the owner's list — the
+// money/notify side runs server-side in /api/cron/skip-closed-bookings.
+// ---------------------------------------------------------------------------
+async function assertFacilityOwnerOrAdmin(facilityId: string) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: await tr("common.not_authenticated") };
+    const { data: f } = await supabase
+        .from("facilities")
+        .select("id, owner_id")
+        .eq("id", facilityId)
+        .single();
+    if (!f) return { error: await tr("common.access_denied") };
+    const { data: profile } = await supabase
+        .from("profiles").select("role").eq("id", user.id).single();
+    const role = (profile as { role: string } | null)?.role ?? "user";
+    const owner = (f as { owner_id: string }).owner_id;
+    if (owner !== user.id && role !== "admin") return { error: await tr("common.access_denied") };
+    return { supabase, user };
+}
+
+export async function addFacilityClosedDateAction(
+    facilityId: string,
+    closedDate: string,
+    reason: string,
+) {
+    const auth = await assertFacilityOwnerOrAdmin(facilityId);
+    if ("error" in auth) return { error: auth.error };
+    const { supabase, user } = auth;
+    const locale = await getLocale();
+
+    // Validate the date — must be YYYY-MM-DD and not in the past.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(closedDate)) {
+        return { error: await tr("closed_dates.invalid_date") };
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    if (closedDate < today) {
+        return { error: await tr("closed_dates.past_date") };
+    }
+    const trimmedReason = sanitizeTextInput(reason ?? "").slice(0, 200);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any)
+        .from("facility_closed_dates")
+        .upsert({
+            facility_id: facilityId,
+            closed_date: closedDate,
+            reason: trimmedReason,
+            created_by: user.id,
+        }, { onConflict: "facility_id,closed_date" });
+
+    if (error) return { error: error.message };
+
+    await logAuditEvent({
+        actorId: user.id,
+        actorRole: "user",
+        action: "facility.closed_date.add",
+        targetType: "facility",
+        targetId: facilityId,
+        metadata: { closed_date: closedDate, reason: trimmedReason },
+    });
+
+    revalidatePath(`/${locale}/dashboard/facility`);
+    return { success: true };
+}
+
+export async function removeFacilityClosedDateAction(
+    facilityId: string,
+    closedDate: string,
+) {
+    const auth = await assertFacilityOwnerOrAdmin(facilityId);
+    if ("error" in auth) return { error: auth.error };
+    const { supabase, user } = auth;
+    const locale = await getLocale();
+
+    const { error } = await supabase
+        .from("facility_closed_dates")
+        .delete()
+        .eq("facility_id", facilityId)
+        .eq("closed_date", closedDate);
+
+    if (error) return { error: error.message };
+
+    await logAuditEvent({
+        actorId: user.id,
+        actorRole: "user",
+        action: "facility.closed_date.remove",
+        targetType: "facility",
+        targetId: facilityId,
+        metadata: { closed_date: closedDate },
+    });
+
+    revalidatePath(`/${locale}/dashboard/facility`);
+    return { success: true };
+}

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { FacilityEditForm } from "./FacilityEditForm";
 import { StripeConnectSection } from "./StripeConnectSection";
 import { ShareableLinkCard } from "./ShareableLinkCard";
+import { ClosedDatesSection } from "./ClosedDatesSection";
 import { getActiveFacility } from "@/lib/facility-context";
 import { getStripe } from "@/lib/stripe";
 import { getPlatformFeePercent } from "@/lib/platform-settings";
@@ -32,7 +33,8 @@ export default async function FacilityPage() {
         redirect(`/${locale}/dashboard/onboarding`);
     }
 
-    const [{ data: allSports }, { data: facilitySpots }, { data: hours }] = await Promise.all([
+    const today = new Date().toISOString().slice(0, 10);
+    const [{ data: allSports }, { data: facilitySpots }, { data: hours }, { data: closedDates }] = await Promise.all([
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase as any).from("sports").select("id, name").in("name", ["Padel", "Pickleball", "Squash", "Tennis", "Badminton"]).order("name"),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -43,6 +45,14 @@ export default async function FacilityPage() {
             .select("day_of_week, is_closed, open_time, close_time")
             .eq("facility_id", facility.id)
             .order("day_of_week"),
+        // SAH-91: existing future closed dates for this facility.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase as any)
+            .from("facility_closed_dates")
+            .select("closed_date, reason")
+            .eq("facility_id", facility.id)
+            .gte("closed_date", today)
+            .order("closed_date"),
     ]);
 
     const currentSportIds: number[] = (facilitySpots ?? []).map((r: { sport_id: number }) => r.sport_id);
@@ -83,6 +93,10 @@ export default async function FacilityPage() {
                 currentSportIds={currentSportIds}
                 initialImages={facility.facility_images ?? []}
                 initialHours={hours ?? []}
+            />
+            <ClosedDatesSection
+                facilityId={facility.id}
+                initialClosedDates={closedDates ?? []}
             />
             <StripeConnectSection
                 hasAccount={!!facility.stripe_account_id}
