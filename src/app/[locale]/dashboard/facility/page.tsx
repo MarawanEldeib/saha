@@ -5,7 +5,7 @@ import { FacilityEditForm } from "./FacilityEditForm";
 import { StripeConnectSection } from "./StripeConnectSection";
 import { ShareableLinkCard } from "./ShareableLinkCard";
 import { getActiveFacility } from "@/lib/facility-context";
-import { getStripe } from "@/lib/stripe";
+import { getStripe, isStripeTestMode } from "@/lib/stripe";
 import { getPlatformFeePercent } from "@/lib/platform-settings";
 
 export const metadata = { title: "Manage Facility – Saha" };
@@ -56,6 +56,7 @@ export default async function FacilityPage() {
     let payoutsEnabled = false;
     let currentlyDue: string[] = [];
     let disabledReason: string | null = null;
+    let accountCountry: string | undefined;
     if (facility.stripe_account_id) {
         try {
             const account = await getStripe().accounts.retrieve(facility.stripe_account_id);
@@ -64,11 +65,16 @@ export default async function FacilityPage() {
             payoutsEnabled = !!account.payouts_enabled;
             currentlyDue = account.requirements?.currently_due ?? [];
             disabledReason = account.requirements?.disabled_reason ?? null;
+            accountCountry = account.country ?? undefined;
         } catch {
             // Stripe lookup failed — treat as not-yet-ready. UI will show
             // "complete onboarding" state.
         }
     }
+
+    // SAH-64 bounce-back: detect test mode server-side so the dashboard
+    // can surface the test-data cheat sheet without leaking the key prefix.
+    const testMode = isStripeTestMode();
 
     return (
         <div className="max-w-2xl space-y-6">
@@ -92,6 +98,8 @@ export default async function FacilityPage() {
                 currentlyDue={currentlyDue}
                 disabledReason={disabledReason}
                 platformFeePercent={await getPlatformFeePercent()}
+                testMode={testMode}
+                accountCountry={accountCountry}
             />
         </div>
     );

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CheckCircle2, AlertCircle, ExternalLink, CreditCard, ArrowDownToLine, BadgeCheck, Wallet, Loader2, Clock, FileWarning } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { StripeTestModeBanner } from "./StripeTestModeBanner";
 
 type Props = {
     /** Owner has linked a Stripe account (charges may still be disabled). */
@@ -27,6 +28,14 @@ type Props = {
     disabledReason: string | null;
     /** Platform-side fee, mirrored in the disclosure copy. */
     platformFeePercent: number;
+    /**
+     * SAH-64 bounce-back: when STRIPE_SECRET_KEY is sk_test_, render the
+     * test-mode cheat-sheet banner so owners know they can use dummy data
+     * during onboarding instead of real KYC documents.
+     */
+    testMode?: boolean;
+    /** Two-letter Stripe account country, used to pick the right test bank. */
+    accountCountry?: string;
 };
 
 /**
@@ -79,6 +88,8 @@ export function StripeConnectSection({
     currentlyDue,
     disabledReason,
     platformFeePercent,
+    testMode,
+    accountCountry,
 }: Props) {
     const t = useTranslations("facility_form");
     const tStripe = useTranslations("stripe_connect");
@@ -181,6 +192,9 @@ export function StripeConnectSection({
                     </span>
                 )}
             </div>
+
+            {/* SAH-64 bounce-back: test-mode banner — visible in every state when active */}
+            {testMode && <StripeTestModeBanner accountCountry={accountCountry} />}
 
             {/* 90 / 10 / Direct disclosure card — visible in every state */}
             <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-gradient-to-br from-emerald-50 to-emerald-50/30 dark:from-emerald-900/20 dark:to-emerald-900/5 p-4 grid grid-cols-3 gap-3 text-center">

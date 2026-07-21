@@ -717,6 +717,25 @@
         "already_reviewed": "You have already reviewed this facility.",
         "rls_blocked": "Reviews open after a completed booking at this facility."
     },
+    "stripe_test_mode": {
+        "title": "Stripe test mode",
+        "body": "This deployment is talking to Stripe's test environment. You can complete onboarding with dummy values — Stripe will not ask you for real documents, real bank accounts, or your actual passport. When the hosted form asks for ID/passport/trade license, upload any file (or skip if Stripe offers it) and it will be auto-approved.",
+        "show_cheatsheet": "Show test values",
+        "hide_cheatsheet": "Hide test values",
+        "cheatsheet_intro": "Use these exact values during Stripe Connect onboarding and at checkout. They're the Stripe-documented test values and will always pass.",
+        "card_label": "Test card",
+        "card_exp_label": "Card expiry",
+        "card_cvc_label": "Card CVC",
+        "bank_routing_label": "Bank routing / BIC",
+        "bank_account_label": "Bank account / IBAN",
+        "ssn_label": "SSN (last 4)",
+        "id_number_label": "Tax / ID number",
+        "dob_label": "Date of birth",
+        "phone_label": "Phone",
+        "address_label": "Address (any valid format)",
+        "copy": "Copy",
+        "docs_link_prefix": "Reference:"
+    },
     "stripe_connect": {
         "badge_ready": "Ready to receive payments",
         "badge_verifying": "Stripe is verifying",
